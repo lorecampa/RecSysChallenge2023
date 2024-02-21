@@ -8,6 +8,8 @@ from sklearn.model_selection import KFold
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from Recommenders.KNN.ItemKNNCFRecommender import ItemKNNCFRecommender
+from tuners.KNN.knn_tuners import TunerItemKNNCFRecommender
 from tuners.hybrid.xgboost_tuner import TunerXGboostRecommender
 
 
@@ -29,9 +31,9 @@ else:
     URM_train_val, URM_test = split_train_in_two_percentage_global_sample(URM, train_percentage = 0.8)
     URM_train, URM_val = split_train_in_two_percentage_global_sample(URM_train_val, train_percentage = 0.8)
 
-tuner_instance = TunerXGboostRecommender
-study_name = 'TunerXGboostRecommenderCrossVal'
-load_model_path = f'{base_path}/cross_val/train'
-tuner = tuner_instance(URM_train + URM_val, URM_test, load_model_path=load_model_path, categorical_method=None, study_name=study_name, local=True, delete_if_exists=False)
-tuner.optimize(n_trials=500, cross_validate=True, n_jobs=1)
 
+
+tuner_instance = TunerItemKNNCFRecommender
+study_name = 'TunerKNNCFRecommenderCrossVal'
+tuner = tuner_instance(URM_train, URM_val, study_name=study_name, local=True, delete_if_exists=False)
+tuner.optimize(n_trials=500, cross_validate=True, n_jobs=1)

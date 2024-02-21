@@ -102,7 +102,6 @@ class Builder():
         
     
     def create_sub(self, submission: pd.DataFrame, folder_path='submissions', file_name='submission'):
-        # If directory does not exist, create
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
         

@@ -1,30 +1,12 @@
 from Evaluation.Evaluator import EvaluatorHoldout
 from Recommenders.FactorizationMachines.LightFMRecommender import LightFMCFRecommender
-from Recommenders.MatrixFactorization.Cython.MatrixFactorization_Cython import MatrixFactorization_AsySVD_Cython, MatrixFactorization_BPR_Cython, MatrixFactorization_SVDpp_Cython
+from Recommenders.MatrixFactorization.Cython.MatrixFactorization_Cython import MatrixFactorization_AsySVD_Cython, MatrixFactorization_BPR_Cython
 from Recommenders.MatrixFactorization.IALSRecommender import IALSRecommender
 from Recommenders.MatrixFactorization.NMFRecommender import NMFRecommender
 from Recommenders.MatrixFactorization.SVDFeatureRecommender import SVDFeature
 from tuners.tuner import BaseTuner, MLTuner, Tuner
 import time
 
-
-class TunerSVDpp(MLTuner):        
-    def __init__(self, URM_train, URM_val, study_name='SVDpp', **args):
-        super().__init__(study_name, **args)
-        self.rec = MatrixFactorization_SVDpp_Cython
-        self.URM_train = URM_train
-        self.URM_val = URM_val
- 
-    def get_hs(self, optuna_trial):  
-        hs = {
-            "num_factors": optuna_trial.suggest_int("num_factors", 1, 200),
-            "sgd_mode": optuna_trial.suggest_categorical("sgd_mode", ["sgd", "adagrad", "adam"]),
-            "batch_size": optuna_trial.suggest_categorical("batch_size", [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]),
-            "item_reg": optuna_trial.suggest_float("item_reg", 1e-5, 1e-2, log=True),
-            "user_reg": optuna_trial.suggest_float("user_reg", 1e-5, 1e-2, log=True),
-            "learning_rate": optuna_trial.suggest_float("learning_rate", 1e-4, 1e-1, log=True)
-        }
-        return hs
 
 class TunerLightFMCFRecommender(MLTuner):        
     def __init__(self, builder, study_name='LightFMCFRecommender', **args):

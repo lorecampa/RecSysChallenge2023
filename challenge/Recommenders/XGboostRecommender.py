@@ -1,6 +1,5 @@
 import math
 import pickle
-from category_encoders import MEstimateEncoder, TargetEncoder
 import numpy as np
 from scipy import spatial
 from sklearn.discriminant_analysis import StandardScaler
@@ -28,24 +27,20 @@ from warnings import simplefilter
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold
-from numpy import dot
-from numpy.linalg import norm
-from catboost import CatBoostRanker, Pool
-import matplotlib.pyplot as plt
 
 
+class XGboostRecommender(BaseRecommender):
+    """XGboost recommender"""
 
-class CatBoostRecommender(BaseRecommender):
-    """CatBoostRecommender"""
+    RECOMMENDER_NAME = "XGboostRecommender"
 
-    RECOMMENDER_NAME = "CatBoostRecommender"
-
-    def __init__(self, URM_train, URM_val, load_model_path=None):
-        super(CatBoostRecommender, self).__init__(URM_train)
+    def __init__(self, URM_train, URM_val, load_model_path=None, categorical_method=None):
+        super(XGboostRecommender, self).__init__(URM_train)
         self.n_users, self.n_items = self.URM_train.shape
         self.URM_train = URM_train
-        self.URM_val = URM_val        
+        self.URM_val = URM_val
+        self.categorical_method = categorical_method
+        
         #------- Recs -----------
         with open('best_models_info.pickle', 'rb') as f:
             self.best_models_info = pickle.load(f)
@@ -58,6 +53,7 @@ class CatBoostRecommender(BaseRecommender):
             'RP3betaRecommenderCrossValNDCG',
             'SLIMElasticNetRecommenderCrossValNDCG',
             'TopPop',
+            'IALSRecommender',
             'MultVAERecommender',
             'SLIMElasticNetRecommenderCrossValRecall40',
             'RP3betaRecommenderCrossValRecall40',
@@ -102,44 +98,55 @@ class CatBoostRecommender(BaseRecommender):
         
     def fit(self,
             cutoff=35,
-            verbosity=0,
-            n_estimators= 50,
-            reg_alpha= 1e-1,
-            reg_lambda= 1e-1,
-            max_depth= 5,
-            num_leaves= 10,
-            learning_rate=1e-2,
-            tree_learner= 'serial',
-            boosting_type= 'gbdt',
-            objective= 'lambdarank',
-            metric= 'map'
-            ):
+            n_estimators=50,
+            learning_rate=1e-1,
+            reg_alpha=1e-1,
+            reg_lambda=1e-1,
+            max_depth=5,
+            max_leaves=0,
+            grow_policy="depthwise",
+            objective="rank:pairwise",
+            booster="gbtree",
+            tree_method="hist",
+            random_state=None,
+            verbosity=0):
         
         if (cutoff in self.cutoff_df_map):
             self.features = self.cutoff_df_map[cutoff]
         else:
             self.features = self._compute_features(self.URM_train, self.recs, cutoff=cutoff)
             self.cutoff_df_map[cutoff] = self.features
-                        
-        categorical_columns = ['ItemID', 'UserID', 'user_popularity_group_id', 'item_popularity_group_id']
-        self.features[categorical_columns] = self.features[categorical_columns].astype(str)
+                
+        self.model = XGBRanker(objective=objective,
+                      n_estimators = int(n_estimators),
+                      random_state = random_state,
+                      learning_rate = learning_rate,
+                      reg_alpha = reg_alpha,
+                      reg_lambda = reg_lambda,
+                      max_depth = int(max_depth),
+                      max_leaves = int(max_leaves),
+                      grow_policy = grow_policy,
+                      verbosity = verbosity,
+                      booster = booster,
+                      enable_categorical = self.categorical_method is None,
+                      tree_method = tree_method,
+                      )
+        
         
         X_train = self.features.drop(columns = ["Label"])
         y_train = self.features["Label"]
-        groups = self.features.groupby("UserID").size().values    
+        groups = self.features.groupby("UserID").size().values
         
-        
-        train_data = Pool(data=X_train, label=y_train, cat_features=categorical_columns, group_id=X_train['UserID'].astype(int).values) 
-        self.model = CatBoostRanker(
-            iterations=100,  # Adjust the number of iterations based on your data
-            depth=6,         # Adjust the depth of the trees
-            learning_rate=0.1,  # Adjust the learning rate
-            loss_function='YetiRank',  # YetiRank is designed for ranking tasks
-            cat_features=categorical_columns,
-            verbose=10
-        )      
-        self.model.fit(train_data)
+        if (self.categorical_method != None):            
+            categorical_columns = X_train.select_dtypes(include=['category']).columns
+            X_train.drop(columns=categorical_columns, inplace=True)
+      
+        self.model.fit(X_train, 
+                       y_train,
+                       group=groups,
+                       verbose=True)
                         
+    
     def _compute_labels(self, URM):
         URM_coo = sps.coo_matrix(URM)
         df = pd.DataFrame({"UserID": URM_coo.row, "ItemID": URM_coo.col})
@@ -148,39 +155,34 @@ class CatBoostRecommender(BaseRecommender):
         
         return df
 
-    def _compute_features(self, URM, recs, cutoff, load=True):
-        if (not load):
-            start_time = time.time()
-            df = pd.DataFrame(index=range(0,self.n_users), columns=["ItemID"])
-            df.index.name='UserID'
-            df.reset_index(inplace=True)
-            df.rename(columns = {"index": "UserID"}, inplace=True)
-            
-            generators_name = ['ScoresHybridRecommenderCrossValRecall40']
-            generators = [rec_instance for rec_name, rec_instance in recs.items() if rec_name in generators_name]
-            df=self.generate_candidate_from_multiple(df, generators, cutoff=cutoff)
+    def _compute_features(self, URM, recs, cutoff):
+        start_time = time.time()
+        df = pd.DataFrame(index=range(0,self.n_users), columns=["ItemID"])
+        df.index.name='UserID'
+        df.reset_index(inplace=True)
+        df.rename(columns = {"index": "UserID"}, inplace=True)
+        
+        generators_name = ['ScoresHybridRecommenderCrossValRecall40']
+        generators = [rec_instance for rec_name, rec_instance in recs.items() if rec_name in generators_name]
+        df=self.generate_candidate_from_multiple(df, generators, cutoff=cutoff)
 
-            features_rec_instances = [rec_instance for rec_name, rec_instance in recs.items() if "Recall" not in rec_name]
-            df=self.generate_recs_scores(df, features_rec_instances)
-            k_values = [3, 10]
-            df=self.generate_is_top_k_feature(df, features_rec_instances, k_values=k_values)
-            df=self.generate_count_agreement_on_k_feature(df, features_rec_instances, k_values=k_values)
-            df=self.normalize_recs_scores(df, features_rec_instances)
-            df=self.generate_recs_stats(df, features_rec_instances)
-            df=self.generate_dissimilarity_features(df, features_rec_instances)
-            
-            n_groups=20
-            df=self.generate_user_profile(df, URM, n_groups=n_groups)
-            df=self.generate_item_profile(df, URM, n_groups=n_groups)
-                        
-            df = self.merge_feature_and_label(df, self.labels)
-            
-            df[df.select_dtypes(include='float64').columns] = df.select_dtypes(include='float64').astype(np.float32)
-            print(f'Time to compute features: {((time.time() - start_time)/60):.1f}m')
-            df.to_pickle('tmp_df/df_catboost.pkl')
-        else:
-            df = pd.read_pickle('tmp_df/df_catboost.pkl')
-
+        features_rec_instances = [rec_instance for rec_name, rec_instance in recs.items() if "Recall" not in rec_name]
+        df=self.generate_recs_scores(df, features_rec_instances)
+        k_values = [3, 10, 20]
+        df=self.generate_is_top_k_feature(df, features_rec_instances, k_values=k_values)
+        df=self.generate_count_agreement_on_k_feature(df, features_rec_instances, k_values=k_values)
+        df=self.generate_recs_stats(df, features_rec_instances)
+        df=self.normalize_recs_scores(df, features_rec_instances)
+        df=self.generate_dissimilarity_features(df, features_rec_instances)
+        
+        n_groups=20
+        df=self.generate_user_profile(df, URM, n_groups=n_groups)
+        df=self.generate_item_profile(df, URM, n_groups=n_groups)
+                    
+        df = self.merge_feature_and_label(df, self.labels)
+        
+        df[df.select_dtypes(include='float64').columns] = df.select_dtypes(include='float64').astype(np.float32)
+        print(f'Time to compute features: {((time.time() - start_time)/60):.1f}m')
         return df
     
     def generate_candidate_from_multiple(self, df: pd.DataFrame, generators, cutoff=35):
@@ -212,6 +214,7 @@ class CatBoostRecommender(BaseRecommender):
         
         df = df.copy()
         to_compute_stats = [rec.RECOMMENDER_NAME for rec in other_recs]
+        print('Computing aggregate stats...')
         stats = df.groupby('UserID')[to_compute_stats].agg([
             'mean', 
             'std', 
@@ -225,20 +228,12 @@ class CatBoostRecommender(BaseRecommender):
         
     def normalize_recs_scores(self, df: pd.DataFrame, other_recs):
         df = df.copy()
-        to_normalize = [rec.RECOMMENDER_NAME for rec in other_recs]    
+        to_normalize = [rec.RECOMMENDER_NAME for rec in other_recs]
+        df[to_normalize] = StandardScaler().fit_transform(df[to_normalize])
         def standardize_group(group):
-            return RobustScaler().fit_transform(group.values.reshape(-1, 1)).flatten()
+            return StandardScaler().fit_transform(group.values.reshape(-1, 1)).flatten()
 
         df[to_normalize] = df.groupby('UserID')[to_normalize].transform(standardize_group)
-        return df
-    
-    def normalize_recs_scores_new(self, df: pd.DataFrame, other_recs):
-        df = df.copy()
-        to_normalize = [rec.RECOMMENDER_NAME for rec in other_recs]        
-        def scale(x:pd.DataFrame):
-            x[to_normalize] = StandardScaler().fit_transform(x[to_normalize])
-            return x
-        df = df.groupby('UserID').apply(scale).reset_index(drop=True)
         return df
 
     def generate_user_profile(self, df: pd.DataFrame, URM, n_groups=20):
@@ -315,55 +310,10 @@ class CatBoostRecommender(BaseRecommender):
         for pair in tqdm(model_pairs, desc='Generating user based dissimilarity features'):
             pair1, pair2 = pair
             df[f'{pair1}_{pair2}_abs_diff'] = (df[pair1] - df[pair2]).abs()
+            df[f'{pair1}_{pair2}_relative_diff'] = (df[pair1] - df[pair2])
+
         return df
-
-    def encode_categoricals_svd(self, df: pd.DataFrame, latent_dims=50):
-        df = df.copy()
-        categorical_columns = df.select_dtypes(include=['category']).columns
-        print(f'SVD encoding categorical columns: {categorical_columns.tolist()}...')
-    
-        X_seq = df[categorical_columns].apply(lambda x: " ".join(list([str(y) + str(i) for i, y in enumerate(x)])), axis=1)
-
-        svd_feats = ['svd_'+str(l) for l in range(latent_dims)]
-        vectorizer = TfidfVectorizer()
-
-        dim_reduction = TruncatedSVD(n_components=latent_dims, random_state=0)
-        df[svd_feats] =  dim_reduction.fit_transform(vectorizer.fit_transform(X_seq))        
-        return df
-    
-    # def encode_categoricals_target_test(self, df: pd.DataFrame, m=4.0):
-    #     df_enc = df.copy()
-    #     X = df_enc.drop(columns = ["Label"])
-    #     y = df_enc["Label"]
-    #     categorical_columns = df_enc.select_dtypes(include=['category']).columns
-    #     print(f'Target encoding categorical columns: {categorical_columns.tolist()}...')
-        
-    #     enc_auto = TargetEncoder(random_state=42, target_type='binary')
-    #     df_enc[[f'{col}_enc' for col in categorical_columns]] = enc_auto.fit_transform(X[categorical_columns], y)
-    #     return df_enc
-        
-    def encode_categoricals_target(self, df: pd.DataFrame, m=4.0):
-        df_enc = df.copy()
-        categorical_columns = df_enc.select_dtypes(include=['category']).columns
-        encoded_columns = [f'{col}_enc' for col in categorical_columns]
-        print(f'Target encoding categorical columns: {categorical_columns.tolist()}...')
-            
-        sgkf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)
-        X = df_enc.drop(columns=['Label'])
-        y = df_enc['Label']
-        groups = X['UserID'].astype(int)
-        df_enc[encoded_columns] = np.nan
-        for train_idx, val_idx in tqdm(sgkf.split(X, y, groups=groups), desc='Encoding categorical columns'):
-            X_train, y_train = X.iloc[train_idx], y.iloc[train_idx]
-            X_val, _ = X.iloc[val_idx], y.iloc[val_idx]
-            encoder = MEstimateEncoder(cols=categorical_columns, m=m)
-            encoder.fit(X_train, y_train)
-            encoded_values = encoder.transform(X_val)
-            df_enc.loc[encoded_values.index, encoded_columns] = encoded_values[categorical_columns].values
-        
-        return df_enc
-        
-             
+              
     def merge_feature_and_label(self, features, labels):
         df = pd.merge(features, labels, on=['UserID','ItemID'], how='left', indicator='Exist')
         df["Label"] = df["Exist"].apply(lambda x: 1 if x == 'both' else 0)
@@ -382,10 +332,14 @@ class CatBoostRecommender(BaseRecommender):
         user_mask = self.features["UserID"].isin(user_id_array)
         X_to_predict_user = self.features[user_mask].copy()
         X_to_predict_user.drop(columns=["Label"], inplace=True)
-        
+                    
         user_ids = X_to_predict_user['UserID'].astype(int).values
         item_ids = X_to_predict_user['ItemID'].astype(int).values
         item_scores = np.full((self.n_users, self.n_items), -np.inf, dtype=np.float32)
+
+        if (self.categorical_method is not None):
+            categorical_columns = X_to_predict_user.select_dtypes(include=['category']).columns
+            X_to_predict_user.drop(columns=categorical_columns, inplace=True)
             
         scores = self.model.predict(X_to_predict_user)
         item_scores[user_ids, item_ids] = scores
@@ -393,19 +347,7 @@ class CatBoostRecommender(BaseRecommender):
         return item_scores[user_id_array]
     
     def plot_importance(self, max_num_features=30):
-        feature_importance = self.model.get_feature_importance()
-        feature_names = self.features.columns[:-1]
-
-        # Sort feature importance in descending order
-        sorted_idx = feature_importance.argsort()[::-1]
-
-        # Plot the feature importances
-        plt.bar(range(len(feature_importance)), feature_importance[sorted_idx])
-        plt.xticks(range(len(feature_importance)), feature_names[sorted_idx], rotation=90)
-        plt.xlabel('Feature')
-        plt.ylabel('Importance')
-        plt.title('CatBoost Feature Importance')
-        plt.show()
+        plot_importance(self.model, importance_type='weight', title='Weight (Frequence)', max_num_features=max_num_features)
         
         
     
