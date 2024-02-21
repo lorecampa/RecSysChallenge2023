@@ -32,8 +32,16 @@ else:
     URM_train, URM_val = split_train_in_two_percentage_global_sample(URM_train_val, train_percentage = 0.8)
 
 
+# # Normal recommender
+# tuner_instance = TunerItemKNNCFRecommender
+# study_name = 'TunerKNNCFRecommenderCrossVal'
+# tuner = tuner_instance(URM_train, URM_val, study_name=study_name, local=True, delete_if_exists=False)
+# tuner.optimize(n_trials=500, cross_validate=True, n_jobs=1)
 
-tuner_instance = TunerItemKNNCFRecommender
-study_name = 'TunerKNNCFRecommenderCrossVal'
-tuner = tuner_instance(URM_train, URM_val, study_name=study_name, local=True, delete_if_exists=False)
+
+# Xgboost
+tuner_instance = TunerXGboostRecommender
+study_name = 'TunerXGboostRecommenderCrossValFinal'
+load_model_path = f'{base_path}/cross_val/train'
+tuner = tuner_instance(URM_train, URM_val, load_model_path=load_model_path, study_name=study_name, local=True, delete_if_exists=True)
 tuner.optimize(n_trials=500, cross_validate=True, n_jobs=1)

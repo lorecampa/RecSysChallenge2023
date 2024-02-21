@@ -49,7 +49,6 @@ class XGboostRecommender(BaseRecommender):
         self.models_to_load = [
             'ItemKNNCFRecommenderCrossValNDCG',
             'UserKNNCFRecommenderCrossValNDCG',
-            'P3alphaRecommenderCrossValNDCG',
             'RP3betaRecommenderCrossValNDCG',
             'SLIMElasticNetRecommenderCrossValNDCG',
             'TopPop',
@@ -309,7 +308,6 @@ class XGboostRecommender(BaseRecommender):
         model_pairs = list(combinations([f'{rec_instance.RECOMMENDER_NAME}' for rec_instance in other_recs], 2))
         for pair in tqdm(model_pairs, desc='Generating user based dissimilarity features'):
             pair1, pair2 = pair
-            df[f'{pair1}_{pair2}_abs_diff'] = (df[pair1] - df[pair2]).abs()
             df[f'{pair1}_{pair2}_relative_diff'] = (df[pair1] - df[pair2])
 
         return df

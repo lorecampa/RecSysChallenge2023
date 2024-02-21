@@ -31,7 +31,7 @@
   \begin{itemize}
     \item $\approx 600k$ user-book interactions ($\approx 13k$ users, $\approx 22k$ books)
     \item Implicit ratings
-    \item Provided slides results consider $80\%$ training, $20\%$ test
+    \item Slides results consider $80\%$ training, $20\%$ test
     \item Evaluation metric: MAP@10 
       \[
       \text{MAP@}K = \frac{1}{K} \sum_{u=1}^{N} \frac{1}{\min(K, m)} \sum_{k=1}^{K} P(k) * rel(k)
@@ -85,8 +85,8 @@
       \begin{itemize}
         \item Item-Based
         \begin{itemize}
-          \item BM-25
-          \item $\text{MAP@}10=0.03493$
+          \item tversky
+          \item $\text{MAP@}10=0.04596$
         \end{itemize}
         \item User-Based
         \begin{itemize}
@@ -127,7 +127,7 @@
       \end{itemize}
       \textbf{Neural}
       \begin{itemize}
-        \item MultVAERecommender
+        \item MultVAE
         \begin{itemize}
           \item $\text{MAP@}10=0.037868$
         \end{itemize}
@@ -217,10 +217,12 @@
       \begin{itemize}
         \item Chosen scores:
         \begin{itemize}
+          \item \texttt{ScoresHybrid}
           \item \texttt{SLIMElasticNet}
           \item \texttt{RP3beta}
           \item \texttt{ItemKNNCF}
-          \item \texttt{TopPopular}
+          \item \texttt{UserKNNCF}
+          \item \texttt{TopPop}
           \item \texttt{IALS}
           \item \texttt{MultVAE}
         \end{itemize}
@@ -248,7 +250,6 @@
         \begin{itemize}
           \item \texttt{user\_profile()}
           \item \texttt{item\_profile()}
-          \item $\text{MAP@}10=0.051485$
         \end{itemize}
       \end{itemize}
     \end{column}
@@ -268,6 +269,17 @@
       \item Embeddings
     \end{itemize}
   \end{itemize}
+\end{frame}
+
+\begin{frame}{XGBoost (Feature Importance)}
+  \begin{itemize}
+    \item $\text{MAP@}10=0.051485$
+  \end{itemize}
+  \begin{figure}
+    \centering
+    \includegraphics[width=1\textwidth]{feature_importance.png}
+    \caption{Feature Importance}
+  \end{figure}
 \end{frame}
 
 
