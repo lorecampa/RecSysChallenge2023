@@ -34,7 +34,7 @@
     \item Slides results consider $80\%$ training, $20\%$ test
     \item Evaluation metric: MAP@10 
       \[
-      \text{MAP@}K = \frac{1}{K} \sum_{u=1}^{N} \frac{1}{\min(K, m)} \sum_{k=1}^{K} P(k) * rel(k)
+      \text{MAP@}K = \frac{1}{N} \sum_{u=1}^{N} \frac{1}{\min(K, m)} \sum_{k=1}^{K} P(k) * rel(k)
       \]
   \end{itemize}
 \end{frame}
@@ -175,7 +175,6 @@
   \end{itemize}
 \end{frame}
 
-
 \begin{frame}{XGBoost (Candidate Generation)}
   \begin{columns}[t]
     \begin{column}{0.5\textwidth}
@@ -211,6 +210,33 @@
 \end{frame}
 
 
+\begin{frame}{XGBoost (Cut-off selection)}
+  \begin{columns}[T]
+    \begin{column}{0.33\textwidth}
+      \begin{figure}
+        \centering
+        \includegraphics[width=\textwidth]{distribution_cutoff_20.png}
+        \caption{Cut-off 20}
+      \end{figure}
+    \end{column}
+    \begin{column}{0.33\textwidth}
+      \begin{figure}
+        \centering
+        \includegraphics[width=\textwidth]{distribution_cutoff_35.png}
+        \caption{Cut-off 35}
+      \end{figure}
+    \end{column}
+    \begin{column}{0.33\textwidth}
+      \begin{figure}
+        \centering
+        \includegraphics[width=\textwidth]{distribution_cutoff_50.png}
+        \caption{Cut-off 50}
+      \end{figure}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+
 \begin{frame}{XGBoost (Feature Engineering)}
   \begin{columns}[t]
     \begin{column}{0.5\textwidth}
@@ -226,7 +252,7 @@
           \item \texttt{IALS}
           \item \texttt{MultVAE}
         \end{itemize}
-        \item Metric: \texttt{NDCG}
+        \item Metric: \texttt{NDCG}\slash\texttt{Precision}
         \item $\text{Cut-off}=10$
       \end{itemize}
     \end{column}
