@@ -29,3 +29,5 @@ $$\text{MAP@}K = \frac{1}{N} \sum_{u=1}^{N} \frac{1}{\min(K, m)} \sum_{k=1}^{K} 
 ## Solution
 
 The best solution was achieved by using an XGBoost re-ranker model using a hybrid of scores between SLIMElasticNet and RP3Beta as a candidate generator with a cutoff of 35. See the [presentation slides](https://github.com/lorecampa/rec_sys_challenge_2024/blob/main/slides/main.pdf) for a comparison between algorithms used.
+
+In the end, I placed 1<sup>st</sup> in the first deadline and tied for 3<sup>rd</sup> place with a different team in the second deadline.
